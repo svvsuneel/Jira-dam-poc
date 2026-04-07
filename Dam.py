@@ -27,10 +27,25 @@ def test():
 # ----------------------------
 # STEP 1: Download attachment
 # ----------------------------
+import base64
+
 def download_attachment(url):
     print("Downloading attachment from Jira...")
 
-    response = requests.get(url, auth=(EMAIL, API_TOKEN))
+    # Fix API version (important)
+    url = url.replace("/rest/api/2/", "/rest/api/3/")
+
+    # Create Basic Auth header manually
+    auth_str = f"{EMAIL}:{API_TOKEN}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {b64_auth}",
+        "Accept": "*/*"
+    }
+
+    # Allow redirects (VERY IMPORTANT)
+    response = requests.get(url, headers=headers, allow_redirects=True)
 
     print("Download status:", response.status_code)
 
@@ -41,7 +56,6 @@ def download_attachment(url):
     else:
         print("Download failed:", response.text)
         return None
-
 
 # ----------------------------
 # STEP 2: Upload to Cloudinary
