@@ -53,23 +53,44 @@ def upload_to_cloudinary(file_url):
 # ----------------------------
 # STEP 2: Add comment to Jira
 # ----------------------------
+import base64
+
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
+    print("Issue:", issue_key)
 
     url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}/comment"
 
-    payload = {
-        "body": f"📎 Uploaded to Cloudinary:\n{image_url}\n\n![image]({image_url})"
+    # Encode auth manually
+    auth_str = f"{EMAIL}:{API_TOKEN}"
+    b64_auth = base64.b64encode(auth_str.encode()).decode()
+
+    headers = {
+        "Authorization": f"Basic {b64_auth}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
     }
 
-    response = requests.post(
-        url,
-        json=payload,
-        auth=(EMAIL, API_TOKEN),
-        headers={"Content-Type": "application/json"}
-    )
+    payload = {
+        "body": {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {"type": "text", "text": "📎 Uploaded to Cloudinary:\n"},
+                        {"type": "text", "text": image_url}
+                    ]
+                }
+            ]
+        }
+    }
 
-    print("Jira response:", response.status_code, response.text)
+    response = requests.post(url, json=payload, headers=headers)
+
+    print("Jira response:", response.status_code)
+    print("Jira response body:", response.text)
 
 
 # ----------------------------
