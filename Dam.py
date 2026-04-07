@@ -7,6 +7,7 @@ import threading
 
 app = Flask(__name__)
 
+print("ENV KEYS AT START:", list(os.environ.keys()))
 # Jira config
 JIRA_URL = "https://securonix.atlassian.net"
 EMAIL = "vsuneel@securonix.com"
@@ -129,6 +130,7 @@ def webhook():
         print("PARSED DATA:", data)
 
         # 🔥 ADD DEBUG HERE
+        print("ENV KEYS:", list(os.environ.keys()))
         print("EMAIL:", EMAIL)
         print("TOKEN LENGTH:", len(API_TOKEN) if API_TOKEN else "None")
 
