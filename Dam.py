@@ -7,8 +7,8 @@ app = Flask(__name__)
 
 # Jira config
 JIRA_URL = "https://securonix.atlassian.net"
-EMAIL = "access@securonix.com"
-API_TOKEN = "ATATT3xFfGF0XK_sc9ONRX9D3HSL6xMc-AgZglpO5He4NUxvjtQS7EM0pIHi1zAPlrBqYJcPC1L_NgVyROsLtr-6KZU7e_C-nXWGFisrHBXCAA02SxKjX3wE504twp8TF0B7ev0javKkDmUg6M6JZ30z1eNhE4IcmCsdPQw6SSiqvz634KDFHJI=13099FA5"   # ⚠️ regenerate token (security risk)
+EMAIL = "vsuneel@securonix.com"
+API_TOKEN = "ATATT3xFfGF0AmdSgu-dv8H6NQ3dZd6xtDZnlfDJ36nVxuLMducW8PaMI0Aw8ELL9acdvu8GoacpT8TxUizQo3XtXAmfV3_dB3iFmsIYkUOhC7SAbfsEsAWGOWUwDwGm1sD7FI43fmIUwL6Hu2nY7RMPwi7_oZGAmlWz01gQkTiwsJqlo8zSqnE=AC41F1A6"   # ⚠️ regenerate token (security risk)
 
 # Cloudinary config
 CLOUD_NAME = "dthbqhoqk"
