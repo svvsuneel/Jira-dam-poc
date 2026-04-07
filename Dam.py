@@ -124,10 +124,13 @@ def process_request(data):
 def webhook():
     try:
         print("🔥 WEBHOOK HIT")
-        print("RAW BODY:", request.data)
 
         data = request.get_json(force=True, silent=True)
         print("PARSED DATA:", data)
+
+        # 🔥 ADD DEBUG HERE
+        print("EMAIL:", EMAIL)
+        print("TOKEN LENGTH:", len(API_TOKEN) if API_TOKEN else "None")
 
         if not data:
             print("❌ No JSON received")
