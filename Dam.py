@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import base64
 import os
 import threading
 
@@ -53,7 +54,7 @@ def upload_to_cloudinary(file_url):
 # ----------------------------
 # STEP 2: Add comment to Jira
 # ----------------------------
-import base64
+
 
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
