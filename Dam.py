@@ -14,7 +14,6 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (securi
 CLOUD_NAME = "dthbqhoqk"
 UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
-
 # ----------------------------
 # TEST ENDPOINT
 # ----------------------------
@@ -25,27 +24,41 @@ def test():
 
 
 # ----------------------------
-# STEP 1: Download attachment
+# STEP 1: Get Attachment Metadata
 # ----------------------------
-import base64
+def get_attachment_metadata(attachment_id):
+    url = f"{JIRA_URL}/rest/api/3/attachment/{attachment_id}"
 
+    response = requests.get(url, auth=(EMAIL, API_TOKEN))
+
+    print("Metadata status:", response.status_code)
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print("Metadata failed:", response.text)
+        return None
+
+
+# ----------------------------
+# STEP 2: Download Attachment (FIXED)
+# ----------------------------
 def download_attachment(url):
-    print("Downloading attachment from Jira...")
+    print("Downloading attachment...")
 
-    # Fix API version (important)
-    url = url.replace("/rest/api/2/", "/rest/api/3/")
+    # Extract attachment ID
+    attachment_id = url.split("/")[-1]
 
-    # Create Basic Auth header manually
-    auth_str = f"{EMAIL}:{API_TOKEN}"
-    b64_auth = base64.b64encode(auth_str.encode()).decode()
+    metadata = get_attachment_metadata(attachment_id)
 
-    headers = {
-        "Authorization": f"Basic {b64_auth}",
-        "Accept": "*/*"
-    }
+    if not metadata:
+        print("❌ Metadata fetch failed")
+        return None
 
-    # Allow redirects (VERY IMPORTANT)
-    response = requests.get(url, headers=headers, allow_redirects=True)
+    content_url = metadata.get("content")
+    print("Media URL:", content_url)
+
+    response = requests.get(content_url, auth=(EMAIL, API_TOKEN))
 
     print("Download status:", response.status_code)
 
@@ -57,8 +70,9 @@ def download_attachment(url):
         print("Download failed:", response.text)
         return None
 
+
 # ----------------------------
-# STEP 2: Upload to Cloudinary
+# STEP 3: Upload to Cloudinary
 # ----------------------------
 def upload_to_cloudinary(file_bytes):
     print("Uploading to Cloudinary...")
@@ -87,7 +101,7 @@ def upload_to_cloudinary(file_bytes):
 
 
 # ----------------------------
-# STEP 3: Add comment to Jira
+# STEP 4: Add Comment to Jira
 # ----------------------------
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
@@ -119,40 +133,39 @@ def process_request(data):
         attachment_url = data.get("attachmentUrl")
 
         if not attachment_url:
-            print("❌ No attachment URL received")
+            print("❌ No attachment URL")
             return
 
-        # Step 1: Download file
+        # Step 1: Download
         file_bytes = download_attachment(attachment_url)
 
         if not file_bytes:
             print("❌ Download failed")
             return
 
-        # Step 2: Upload to Cloudinary
+        # Step 2: Upload
         image_url = upload_to_cloudinary(file_bytes)
 
         if not image_url:
             print("❌ Cloudinary upload failed")
             return
 
-        # Step 3: Add comment
+        # Step 3: Comment
         add_comment(issue_key, image_url)
 
     except Exception as e:
-        print("❌ Error in processing:", str(e))
+        print("❌ Error:", str(e))
 
 
 # ----------------------------
-# WEBHOOK (FIXED)
+# WEBHOOK
 # ----------------------------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
         print("🔥 WEBHOOK HIT")
 
-        raw = request.data
-        print("RAW BODY:", raw)
+        print("RAW BODY:", request.data)
 
         data = request.get_json(force=True, silent=True)
         print("PARSED DATA:", data)
@@ -160,8 +173,6 @@ def webhook():
         if not data:
             print("❌ No JSON received")
             return jsonify({"status": "no data"}), 200
-
-        print("🚀 Starting background thread")
 
         threading.Thread(target=process_request, args=(data,)).start()
 
@@ -173,9 +184,9 @@ def webhook():
 
 
 # ----------------------------
-# START SERVER (Render)
+# START SERVER
 # ----------------------------
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
