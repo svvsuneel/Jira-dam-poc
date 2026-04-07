@@ -55,6 +55,7 @@ def upload_to_cloudinary(file_url):
 # STEP 2: Add comment to Jira
 # ----------------------------
 
+
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
     print("Issue:", issue_key)
@@ -70,9 +71,8 @@ def add_comment(issue_key, image_url):
         "Content-Type": "application/json"
     }
 
-    # ✅ SIMPLE STRING BODY (NOT ADF)
     payload = {
-        "body": f"📎 Uploaded to Cloudinary:\n{image_url}"
+        "body": f"POC Test Comment 🚀\n{image_url}"
     }
 
     response = requests.post(url, json=payload, headers=headers)
