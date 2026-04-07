@@ -135,23 +135,26 @@ def process_request(data):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        print("RAW BODY:", request.data)
+        print("🔥 WEBHOOK HIT")
+
+        raw = request.data
+        print("RAW BODY:", raw)
 
         data = request.get_json(force=True, silent=True)
-
         print("PARSED DATA:", data)
 
         if not data:
-            print("❌ No JSON received from Jira")
+            print("❌ No JSON received")
             return jsonify({"status": "no data"}), 200
 
-        # Run async (prevents timeout)
+        print("🚀 Starting background thread")
+
         threading.Thread(target=process_request, args=(data,)).start()
 
         return jsonify({"status": "accepted"}), 200
 
     except Exception as e:
-        print("Webhook error:", str(e))
+        print("❌ Webhook error:", str(e))
         return jsonify({"error": str(e)}), 200
 
 
