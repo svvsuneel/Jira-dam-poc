@@ -16,25 +16,35 @@ UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
 
 # ----------------------------
-# STEP 1: Download attachment from Jira
+# TEST ENDPOINT
+# ----------------------------
+@app.route('/test', methods=['GET'])
+def test():
+    print("TEST ENDPOINT HIT")
+    return "OK"
+
+
+# ----------------------------
+# STEP 1: Download attachment
 # ----------------------------
 def download_attachment(url):
-    print("Downloading attachment...")
+    print("Downloading attachment from Jira...")
 
     response = requests.get(url, auth=(EMAIL, API_TOKEN))
 
     print("Download status:", response.status_code)
 
     if response.status_code == 200:
-        print("File size:", len(response.content))
-        return response.content
+        file_bytes = response.content
+        print("File size:", len(file_bytes))
+        return file_bytes
     else:
         print("Download failed:", response.text)
         return None
 
 
 # ----------------------------
-# STEP 2: Upload to Cloudinary (FIXED)
+# STEP 2: Upload to Cloudinary
 # ----------------------------
 def upload_to_cloudinary(file_bytes):
     print("Uploading to Cloudinary...")
@@ -55,13 +65,15 @@ def upload_to_cloudinary(file_bytes):
     print("Cloudinary body:", response.text)
 
     if response.status_code == 200:
-        return response.json().get("secure_url")
+        secure_url = response.json().get("secure_url")
+        print("Uploaded URL:", secure_url)
+        return secure_url
     else:
         return None
 
 
 # ----------------------------
-# STEP 3: Add comment in Jira
+# STEP 3: Add comment to Jira
 # ----------------------------
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
@@ -83,52 +95,57 @@ def add_comment(issue_key, image_url):
 
 
 # ----------------------------
-# BACKGROUND PROCESS (Fix timeout)
+# BACKGROUND PROCESS
 # ----------------------------
 def process_request(data):
     try:
+        print("Processing request:", data)
+
         issue_key = data.get("issueKey")
         attachment_url = data.get("attachmentUrl")
 
-        print("Processing:", data)
-
         if not attachment_url:
-            print("No attachment URL")
+            print("❌ No attachment URL received")
             return
 
-        # Step 1: Download from Jira
+        # Step 1: Download file
         file_bytes = download_attachment(attachment_url)
 
         if not file_bytes:
+            print("❌ Download failed")
             return
 
         # Step 2: Upload to Cloudinary
         image_url = upload_to_cloudinary(file_bytes)
 
         if not image_url:
+            print("❌ Cloudinary upload failed")
             return
 
         # Step 3: Add comment
         add_comment(issue_key, image_url)
 
     except Exception as e:
-        print("Error:", str(e))
+        print("❌ Error in processing:", str(e))
 
 
 # ----------------------------
-# WEBHOOK
+# WEBHOOK (FIXED)
 # ----------------------------
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
+        print("RAW BODY:", request.data)
+
         data = request.get_json(force=True, silent=True)
 
-        print("Received:", data)
+        print("PARSED DATA:", data)
 
         if not data:
-            return jsonify({"error": "No data"}), 200
+            print("❌ No JSON received from Jira")
+            return jsonify({"status": "no data"}), 200
 
-        # Run async (IMPORTANT)
+        # Run async (prevents timeout)
         threading.Thread(target=process_request, args=(data,)).start()
 
         return jsonify({"status": "accepted"}), 200
@@ -138,19 +155,8 @@ def webhook():
         return jsonify({"error": str(e)}), 200
 
 
-
-
 # ----------------------------
-# TEST ENDPOINT (MOVE HERE)
-# ----------------------------
-@app.route('/test', methods=['GET'])
-def test():
-    print("TEST ENDPOINT HIT")
-    return "OK"
-
-
-# ----------------------------
-# START SERVER
+# START SERVER (Render)
 # ----------------------------
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
