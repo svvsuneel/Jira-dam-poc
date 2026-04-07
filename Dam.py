@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+from requests.auth import HTTPBasicAuth
 import base64
 import os
 import threading
@@ -56,17 +57,15 @@ def upload_to_cloudinary(file_url):
 # ----------------------------
 
 
+
+
 def add_comment(issue_key, image_url):
     print("Adding comment to Jira...")
     print("Issue:", issue_key)
 
     url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}/comment"
 
-    auth_str = f"{EMAIL}:{API_TOKEN}"
-    b64_auth = base64.b64encode(auth_str.encode()).decode()
-
     headers = {
-        "Authorization": f"Basic {b64_auth}",
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
@@ -75,7 +74,12 @@ def add_comment(issue_key, image_url):
         "body": f"POC Test Comment 🚀\n{image_url}"
     }
 
-    response = requests.post(url, json=payload, headers=headers)
+    response = requests.post(
+        url,
+        json=payload,
+        headers=headers,
+        auth=HTTPBasicAuth(EMAIL, API_TOKEN)   # ✅ KEY FIX
+    )
 
     print("Jira response:", response.status_code)
     print("Jira response body:", response.text)
