@@ -17,77 +17,94 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (securi
 CLOUD_NAME = "dthbqhoqk"
 UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
+
 # ----------------------------
 # TEST ENDPOINT
 # ----------------------------
 @app.route('/test', methods=['GET'])
 def test():
-    print("TEST ENDPOINT HIT")
-    return "OK"
+    return "DAM Service Running ✅"
 
 
 # ----------------------------
-# STEP 1: Upload directly using URL (WORKAROUND)
+# STEP 1: Download Attachment from Jira
 # ----------------------------
-def upload_to_cloudinary(file_url):
-    print("Uploading using direct URL...")
+def download_attachment(attachment_url):
+    print("📥 Downloading attachment...")
 
-    upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/image/upload"
+    try:
+        # Extract attachment ID
+        attachment_id = attachment_url.split("/")[-1]
 
-    data = {
-        "file": file_url,
-        "upload_preset": UPLOAD_PRESET
-    }
+        # Step 1: Get metadata
+        meta_url = f"{JIRA_URL}/rest/api/3/attachment/{attachment_id}"
 
-    response = requests.post(upload_url, data=data)
+        meta_response = requests.get(
+            meta_url,
+            auth=HTTPBasicAuth(EMAIL, API_TOKEN)
+        )
 
-    print("Cloudinary response:", response.status_code)
-    print("Cloudinary body:", response.text)
+        print("Metadata status:", meta_response.status_code)
 
-    if response.status_code == 200:
-        secure_url = response.json().get("secure_url")
-        print("Uploaded URL:", secure_url)
-        return secure_url
-    else:
-        print("⚠️ Cloudinary failed — using fallback image")
-        return "https://via.placeholder.com/400.png?text=Demo+Image"
+        if meta_response.status_code != 200:
+            print("❌ Metadata fetch failed:", meta_response.text)
+            return None
+
+        content_url = meta_response.json().get("content")
+        print("Media URL:", content_url)
+
+        # Step 2: Download file
+        file_response = requests.get(
+            content_url,
+            auth=HTTPBasicAuth(EMAIL, API_TOKEN)
+        )
+
+        print("Download status:", file_response.status_code)
+
+        if file_response.status_code == 200:
+            print("File size:", len(file_response.content))
+            return file_response.content
+        else:
+            print("❌ Download failed:", file_response.text)
+            return None
+
+    except Exception as e:
+        print("❌ Download exception:", str(e))
+        return None
 
 
 # ----------------------------
-# STEP 2: Add comment to Jira
+# STEP 2: Upload to Cloudinary
 # ----------------------------
+def upload_to_cloudinary(file_bytes, file_name="upload.jpg"):
+    print("☁️ Uploading to Cloudinary...")
 
+    try:
+        upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/image/upload"
 
-
-def add_comment(issue_key, image_url):
-    print("Adding comment to Jira...")
-
-    url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}/comment"
-
-    payload = {
-        "body": {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "📎 Uploaded to Cloudinary:\n"},
-                        {"type": "text", "text": image_url}
-                    ]
-                }
-            ]
+        files = {
+            "file": (file_name, file_bytes)
         }
-    }
 
-    response = requests.post(
-        url,
-        json=payload,
-        auth=HTTPBasicAuth(EMAIL, API_TOKEN)
-    )
+        data = {
+            "upload_preset": UPLOAD_PRESET
+        }
 
-    print("Jira response:", response.status_code)
-    print("Jira response body:", response.text)
+        response = requests.post(upload_url, files=files, data=data)
+
+        print("Cloudinary status:", response.status_code)
+        print("Cloudinary response:", response.text)
+
+        if response.status_code == 200:
+            secure_url = response.json().get("secure_url")
+            print("✅ Uploaded URL:", secure_url)
+            return secure_url
+        else:
+            return None
+
+    except Exception as e:
+        print("❌ Upload exception:", str(e))
+        return None
 
 
 # ----------------------------
@@ -95,27 +112,34 @@ def add_comment(issue_key, image_url):
 # ----------------------------
 def process_request(data):
     try:
-        print("Processing request:", data)
+        print("🚀 Processing request:", data)
 
-        issue_key = data.get("issueKey")
         attachment_url = data.get("attachmentUrl")
+        file_name = data.get("fileName", "file.jpg")
 
         if not attachment_url:
             print("❌ No attachment URL")
             return
 
-        # 🚀 Direct upload (NO Jira download)
-        image_url = upload_to_cloudinary(attachment_url)
+        # Step 1: Download
+        file_bytes = download_attachment(attachment_url)
+
+        if not file_bytes:
+            print("❌ Download failed")
+            return
+
+        # Step 2: Upload
+        image_url = upload_to_cloudinary(file_bytes, file_name)
 
         if not image_url:
             print("❌ Upload failed")
             return
 
-        # Add comment in Jira
-        add_comment(issue_key, image_url)
+        print("🎉 SUCCESS: File uploaded to Cloudinary")
+        print("URL:", image_url)
 
     except Exception as e:
-        print("❌ Error:", str(e))
+        print("❌ Processing error:", str(e))
 
 
 # ----------------------------
@@ -127,17 +151,12 @@ def webhook():
         print("🔥 WEBHOOK HIT")
 
         data = request.get_json(force=True, silent=True)
-        print("PARSED DATA:", data)
-
-        # 🔥 ADD DEBUG HERE
-        print("ENV KEYS:", list(os.environ.keys()))
-        print("EMAIL:", EMAIL)
-        print("TOKEN LENGTH:", len(API_TOKEN) if API_TOKEN else "None")
+        print("📦 Payload:", data)
 
         if not data:
-            print("❌ No JSON received")
             return jsonify({"status": "no data"}), 200
 
+        # Run async
         threading.Thread(target=process_request, args=(data,)).start()
 
         return jsonify({"status": "accepted"}), 200
