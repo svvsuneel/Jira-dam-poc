@@ -16,7 +16,6 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (securi
 CLOUD_NAME = "dthbqhoqk"
 UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
-
 # ----------------------------
 # FILE TYPE DETECTION
 # ----------------------------
@@ -101,13 +100,12 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 
 
 # ----------------------------
-# ADD COMMENT TO JIRA
+# ADD COMMENT (THUMBNAILS)
 # ----------------------------
 def add_comment(issue_key, file):
     try:
         url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}/comment"
 
-        # 🖼️ IMAGE COMMENT
         if file["type"] == "image":
             body = {
                 "type": "doc",
@@ -115,9 +113,7 @@ def add_comment(issue_key, file):
                 "content": [
                     {
                         "type": "paragraph",
-                        "content": [
-                            {"type": "text", "text": "📎 Uploaded to DAM"}
-                        ]
+                        "content": [{"type": "text", "text": "📎 Uploaded to DAM"}]
                     },
                     {
                         "type": "mediaSingle",
@@ -134,8 +130,6 @@ def add_comment(issue_key, file):
                     }
                 ]
             }
-
-        # 📄 FILE COMMENT
         else:
             body = {
                 "type": "doc",
@@ -143,9 +137,7 @@ def add_comment(issue_key, file):
                 "content": [
                     {
                         "type": "paragraph",
-                        "content": [
-                            {"type": "text", "text": "📎 Uploaded to DAM: "}
-                        ]
+                        "content": [{"type": "text", "text": "📎 Uploaded to DAM"}]
                     },
                     {
                         "type": "paragraph",
@@ -165,16 +157,14 @@ def add_comment(issue_key, file):
                 ]
             }
 
-        payload = {"body": body}
-
         response = requests.post(
             url,
-            json=payload,
+            json={"body": body},
             auth=HTTPBasicAuth(EMAIL, API_TOKEN),
             headers={"Content-Type": "application/json"}
         )
 
-        print(f"💬 Comment added ({file['name']}):", response.status_code)
+        print(f"💬 Comment added: {file['name']} →", response.status_code)
 
     except Exception as e:
         print("❌ Comment error:", str(e))
@@ -199,6 +189,55 @@ def delete_attachment(attachment_id):
 
 
 # ----------------------------
+# UPDATE CUSTOM FIELD (FOLDER INFO ONLY)
+# ----------------------------
+def update_jira_field(issue_key):
+    try:
+        url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}"
+
+        payload = {
+            "fields": {
+                "customfield_10107": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": f"📂 DAM Folder: {issue_key}"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Files stored in Cloudinary"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+
+        response = requests.put(
+            url,
+            json=payload,
+            auth=HTTPBasicAuth(EMAIL, API_TOKEN),
+            headers={"Content-Type": "application/json"}
+        )
+
+        print("📝 Field update:", response.status_code)
+
+    except Exception as e:
+        print("❌ Field update error:", str(e))
+
+
+# ----------------------------
 # MAIN PROCESS
 # ----------------------------
 def process_request(data):
@@ -209,10 +248,7 @@ def process_request(data):
         attachments = data.get("attachments", [])
 
         if not attachments:
-            print("❌ No attachments received")
             return
-
-        uploaded_files = []
 
         for attachment in attachments:
             attachment_id = attachment["id"]
@@ -231,15 +267,13 @@ def process_request(data):
                     "type": get_upload_type(file_name)
                 }
 
-                uploaded_files.append(file_info)
-
-                # Delete original attachment
                 delete_attachment(attachment_id)
-
-                # 🔥 Add comment per file
                 add_comment(issue_key, file_info)
 
-        print("\n🎉 PROCESS COMPLETED")
+        # 🔥 Update field after all uploads
+        update_jira_field(issue_key)
+
+        print("🎉 DONE")
 
     except Exception as e:
         print("❌ Processing error:", str(e))
@@ -251,10 +285,7 @@ def process_request(data):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        print("🔥 WEBHOOK HIT")
-
         data = request.get_json(force=True, silent=True)
-        print("📦 Payload:", data)
 
         if not data:
             return jsonify({"status": "no data"}), 200
@@ -264,16 +295,7 @@ def webhook():
         return jsonify({"status": "accepted"}), 200
 
     except Exception as e:
-        print("❌ Webhook error:", str(e))
         return jsonify({"error": str(e)}), 200
-
-
-# ----------------------------
-# HEALTH CHECK
-# ----------------------------
-@app.route('/test', methods=['GET'])
-def test():
-    return "DAM Integration Running ✅"
 
 
 # ----------------------------
