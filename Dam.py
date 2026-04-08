@@ -115,7 +115,29 @@ def update_jira_field(issue_key, folder_url):
 
         payload = {
             "fields": {
-                "customfield_10107": folder_url
+                "customfield_10107": {
+                    "type": "doc",
+                    "version": 1,
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Open DAM Folder",
+                                    "marks": [
+                                        {
+                                            "type": "link",
+                                            "attrs": {
+                                                "href": folder_url
+                                            }
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
             }
         }
 
