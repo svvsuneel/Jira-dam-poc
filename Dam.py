@@ -65,14 +65,13 @@ def download_attachment(attachment):
 
 
 # ----------------------------
-# UPLOAD TO CLOUDINARY (WITH FOLDER + DUPLICATE CHECK)
+# UPLOAD TO CLOUDINARY (FIXED)
 # ----------------------------
 def upload_to_cloudinary(file_bytes, file_name, issue_key):
     try:
         upload_type = get_upload_type(file_name)
-        upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/{upload_type}/upload"
 
-        public_id = f"{issue_key}/{file_name}"
+        upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/{upload_type}/upload"
 
         files = {
             "file": (file_name, file_bytes)
@@ -80,8 +79,7 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 
         data = {
             "upload_preset": UPLOAD_PRESET,
-            "public_id": public_id,
-            "overwrite": "false"
+            "folder": issue_key   # 🔥 THIS CREATES FOLDER
         }
 
         response = requests.post(upload_url, files=files, data=data)
@@ -92,11 +90,6 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
             url = response.json().get("secure_url")
             print("✅ Uploaded:", url)
             return url
-
-        elif response.status_code == 409:
-            print("⚠️ Duplicate detected, skipping:", file_name)
-            return f"{issue_key}/{file_name}"
-
         else:
             print("❌ Upload failed:", response.text)
             return None
@@ -110,11 +103,11 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 # GET FOLDER URL
 # ----------------------------
 def get_folder_url(issue_key):
-    return f"https://res.cloudinary.com/{CLOUD_NAME}/image/list/{issue_key}.json"
+    return f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload/{issue_key}/"
 
 
 # ----------------------------
-# UPDATE JIRA CUSTOM FIELD
+# UPDATE JIRA FIELD
 # ----------------------------
 def update_jira_field(issue_key, folder_url):
     try:
@@ -134,13 +127,14 @@ def update_jira_field(issue_key, folder_url):
         )
 
         print("📝 Jira update:", response.status_code)
+        print("📝 Jira response:", response.text)
 
     except Exception as e:
         print("❌ Jira update error:", str(e))
 
 
 # ----------------------------
-# DELETE ATTACHMENT FROM JIRA
+# DELETE ATTACHMENT
 # ----------------------------
 def delete_attachment(attachment_id):
     try:
@@ -171,8 +165,6 @@ def process_request(data):
             print("❌ No attachments received")
             return
 
-        uploaded_files = []
-
         for attachment in attachments:
             attachment_id = attachment["id"]
 
@@ -184,17 +176,12 @@ def process_request(data):
             url = upload_to_cloudinary(file_bytes, file_name, issue_key)
 
             if url:
-                uploaded_files.append(url)
-
-                # Delete after successful upload
                 delete_attachment(attachment_id)
 
-        # Generate folder URL
         folder_url = get_folder_url(issue_key)
 
         print("📂 Folder URL:", folder_url)
 
-        # Update Jira custom field
         update_jira_field(issue_key, folder_url)
 
         print("\n🎉 PROCESS COMPLETED")
@@ -224,14 +211,6 @@ def webhook():
     except Exception as e:
         print("❌ Webhook error:", str(e))
         return jsonify({"error": str(e)}), 200
-
-
-# ----------------------------
-# HEALTH CHECK
-# ----------------------------
-@app.route('/test', methods=['GET'])
-def test():
-    return "DAM Integration Running ✅"
 
 
 # ----------------------------
