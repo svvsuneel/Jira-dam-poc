@@ -16,6 +16,7 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (securi
 CLOUD_NAME = "dthbqhoqk"
 UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
+
 # ----------------------------
 # FILE TYPE DETECTION
 # ----------------------------
@@ -70,6 +71,7 @@ def download_attachment(attachment):
 def upload_to_cloudinary(file_bytes, file_name, issue_key):
     try:
         upload_type = get_upload_type(file_name)
+
         upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/{upload_type}/upload"
 
         files = {
@@ -99,91 +101,83 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 
 
 # ----------------------------
-# BUILD ADF WITH THUMBNAILS
+# ADD COMMENT TO JIRA
 # ----------------------------
-def build_adf_content(issue_key, uploaded_files):
+def add_comment(issue_key, file):
+    try:
+        url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}/comment"
 
-    content_blocks = []
-
-    # 🔹 Title
-    content_blocks.append({
-        "type": "paragraph",
-        "content": [
-            {"type": "text", "text": f"📂 DAM Assets ({issue_key})"}
-        ]
-    })
-
-    # 🔹 spacing
-    content_blocks.append({"type": "paragraph", "content": []})
-
-    for file in uploaded_files:
-
+        # 🖼️ IMAGE COMMENT
         if file["type"] == "image":
-            # 🔥 IMAGE PREVIEW
-            content_blocks.append({
-                "type": "mediaSingle",
-                "attrs": {"layout": "center"},
+            body = {
+                "type": "doc",
+                "version": 1,
                 "content": [
                     {
-                        "type": "media",
-                        "attrs": {
-                            "type": "external",
-                            "url": file["url"]
-                        }
-                    }
-                ]
-            })
-
-        else:
-            # 🔹 FILE LINK
-            content_blocks.append({
-                "type": "paragraph",
-                "content": [
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "📎 Uploaded to DAM"}
+                        ]
+                    },
                     {
-                        "type": "text",
-                        "text": file["name"],
-                        "marks": [
+                        "type": "mediaSingle",
+                        "attrs": {"layout": "center"},
+                        "content": [
                             {
-                                "type": "link",
-                                "attrs": {"href": file["url"]}
+                                "type": "media",
+                                "attrs": {
+                                    "type": "external",
+                                    "url": file["url"]
+                                }
                             }
                         ]
                     }
                 ]
-            })
-
-    return {
-        "type": "doc",
-        "version": 1,
-        "content": content_blocks
-    }
-
-
-# ----------------------------
-# UPDATE JIRA FIELD
-# ----------------------------
-def update_jira_field(issue_key, uploaded_files):
-    try:
-        url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}"
-
-        payload = {
-            "fields": {
-                "customfield_10107": build_adf_content(issue_key, uploaded_files)
             }
-        }
 
-        response = requests.put(
+        # 📄 FILE COMMENT
+        else:
+            body = {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "📎 Uploaded to DAM: "}
+                        ]
+                    },
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": file["name"],
+                                "marks": [
+                                    {
+                                        "type": "link",
+                                        "attrs": {"href": file["url"]}
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+
+        payload = {"body": body}
+
+        response = requests.post(
             url,
             json=payload,
             auth=HTTPBasicAuth(EMAIL, API_TOKEN),
             headers={"Content-Type": "application/json"}
         )
 
-        print("📝 Jira update:", response.status_code)
-        print("📝 Jira response:", response.text)
+        print(f"💬 Comment added ({file['name']}):", response.status_code)
 
     except Exception as e:
-        print("❌ Jira update error:", str(e))
+        print("❌ Comment error:", str(e))
 
 
 # ----------------------------
@@ -231,16 +225,19 @@ def process_request(data):
             url = upload_to_cloudinary(file_bytes, file_name, issue_key)
 
             if url:
-                uploaded_files.append({
+                file_info = {
                     "name": file_name,
                     "url": url,
                     "type": get_upload_type(file_name)
-                })
+                }
 
+                uploaded_files.append(file_info)
+
+                # Delete original attachment
                 delete_attachment(attachment_id)
 
-        # 🔥 Update Jira with thumbnails
-        update_jira_field(issue_key, uploaded_files)
+                # 🔥 Add comment per file
+                add_comment(issue_key, file_info)
 
         print("\n🎉 PROCESS COMPLETED")
 
@@ -269,6 +266,14 @@ def webhook():
     except Exception as e:
         print("❌ Webhook error:", str(e))
         return jsonify({"error": str(e)}), 200
+
+
+# ----------------------------
+# HEALTH CHECK
+# ----------------------------
+@app.route('/test', methods=['GET'])
+def test():
+    return "DAM Integration Running ✅"
 
 
 # ----------------------------
