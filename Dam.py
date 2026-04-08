@@ -9,8 +9,8 @@ app = Flask(__name__)
 
 print("ENV KEYS AT START:", list(os.environ.keys()))
 # Jira config
-JIRA_URL = "https://securonix.atlassian.net"
-EMAIL = "vsuneel@securonix.com"
+JIRA_URL = "https://valuelabs2.atlassian.net"
+EMAIL = "venkata.sanku@valuelabs.com"
 API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (security risk)
 
 # Cloudinary config
