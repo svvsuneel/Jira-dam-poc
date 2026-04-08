@@ -65,12 +65,11 @@ def download_attachment(attachment):
 
 
 # ----------------------------
-# UPLOAD TO CLOUDINARY (FIXED)
+# UPLOAD TO CLOUDINARY
 # ----------------------------
 def upload_to_cloudinary(file_bytes, file_name, issue_key):
     try:
         upload_type = get_upload_type(file_name)
-
         upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/{upload_type}/upload"
 
         files = {
@@ -79,7 +78,7 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 
         data = {
             "upload_preset": UPLOAD_PRESET,
-            "folder": issue_key   # 🔥 THIS CREATES FOLDER
+            "folder": issue_key
         }
 
         response = requests.post(upload_url, files=files, data=data)
@@ -100,44 +99,76 @@ def upload_to_cloudinary(file_bytes, file_name, issue_key):
 
 
 # ----------------------------
-# GET FOLDER URL
+# BUILD ADF WITH THUMBNAILS
 # ----------------------------
-def get_folder_url(issue_key):
-    return f"https://res.cloudinary.com/{CLOUD_NAME}/image/upload/{issue_key}/"
+def build_adf_content(issue_key, uploaded_files):
+
+    content_blocks = []
+
+    # 🔹 Title
+    content_blocks.append({
+        "type": "paragraph",
+        "content": [
+            {"type": "text", "text": f"📂 DAM Assets ({issue_key})"}
+        ]
+    })
+
+    # 🔹 spacing
+    content_blocks.append({"type": "paragraph", "content": []})
+
+    for file in uploaded_files:
+
+        if file["type"] == "image":
+            # 🔥 IMAGE PREVIEW
+            content_blocks.append({
+                "type": "mediaSingle",
+                "attrs": {"layout": "center"},
+                "content": [
+                    {
+                        "type": "media",
+                        "attrs": {
+                            "type": "external",
+                            "url": file["url"]
+                        }
+                    }
+                ]
+            })
+
+        else:
+            # 🔹 FILE LINK
+            content_blocks.append({
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": file["name"],
+                        "marks": [
+                            {
+                                "type": "link",
+                                "attrs": {"href": file["url"]}
+                            }
+                        ]
+                    }
+                ]
+            })
+
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": content_blocks
+    }
 
 
 # ----------------------------
 # UPDATE JIRA FIELD
 # ----------------------------
-def update_jira_field(issue_key, folder_url):
+def update_jira_field(issue_key, uploaded_files):
     try:
         url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}"
 
         payload = {
             "fields": {
-                "customfield_10107": {
-                    "type": "doc",
-                    "version": 1,
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": "Open DAM Folder",
-                                    "marks": [
-                                        {
-                                            "type": "link",
-                                            "attrs": {
-                                                "href": folder_url
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
-                        }
-                    ]
-                }
+                "customfield_10107": build_adf_content(issue_key, uploaded_files)
             }
         }
 
@@ -187,6 +218,8 @@ def process_request(data):
             print("❌ No attachments received")
             return
 
+        uploaded_files = []
+
         for attachment in attachments:
             attachment_id = attachment["id"]
 
@@ -198,13 +231,16 @@ def process_request(data):
             url = upload_to_cloudinary(file_bytes, file_name, issue_key)
 
             if url:
+                uploaded_files.append({
+                    "name": file_name,
+                    "url": url,
+                    "type": get_upload_type(file_name)
+                })
+
                 delete_attachment(attachment_id)
 
-        folder_url = get_folder_url(issue_key)
-
-        print("📂 Folder URL:", folder_url)
-
-        update_jira_field(issue_key, folder_url)
+        # 🔥 Update Jira with thumbnails
+        update_jira_field(issue_key, uploaded_files)
 
         print("\n🎉 PROCESS COMPLETED")
 
