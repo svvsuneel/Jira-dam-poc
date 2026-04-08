@@ -1,13 +1,12 @@
 from flask import Flask, request, jsonify
 import requests
 from requests.auth import HTTPBasicAuth
-import base64
 import os
 import threading
 
 app = Flask(__name__)
 
-print("ENV KEYS AT START:", list(os.environ.keys()))
+
 # Jira config
 JIRA_URL = "https://valuelabs2.atlassian.net"
 EMAIL = "venkata.sanku@valuelabs.com"
@@ -17,19 +16,13 @@ API_TOKEN = os.environ.get("JIRA_API_TOKEN")   # ⚠️ regenerate token (securi
 CLOUD_NAME = "dthbqhoqk"
 UPLOAD_PRESET = "Dam-poc"  # make sure this exists
 
-
 # ----------------------------
 # FILE TYPE DETECTION
 # ----------------------------
 def get_upload_type(file_name):
     image_ext = ["jpg", "jpeg", "png", "gif", "bmp", "webp"]
-
     ext = file_name.split(".")[-1].lower()
-
-    if ext in image_ext:
-        return "image"
-    else:
-        return "raw"
+    return "image" if ext in image_ext else "raw"
 
 
 # ----------------------------
@@ -72,31 +65,38 @@ def download_attachment(attachment):
 
 
 # ----------------------------
-# UPLOAD TO CLOUDINARY
+# UPLOAD TO CLOUDINARY (WITH FOLDER + DUPLICATE CHECK)
 # ----------------------------
-def upload_to_cloudinary(file_bytes, file_name):
+def upload_to_cloudinary(file_bytes, file_name, issue_key):
     try:
         upload_type = get_upload_type(file_name)
-
         upload_url = f"https://api.cloudinary.com/v1_1/{CLOUD_NAME}/{upload_type}/upload"
+
+        public_id = f"{issue_key}/{file_name}"
 
         files = {
             "file": (file_name, file_bytes)
         }
 
         data = {
-            "upload_preset": UPLOAD_PRESET
+            "upload_preset": UPLOAD_PRESET,
+            "public_id": public_id,
+            "overwrite": "false"
         }
 
         response = requests.post(upload_url, files=files, data=data)
 
-        print(f"☁️ Uploading {file_name} → {upload_type}")
-        print("Status:", response.status_code)
+        print(f"☁️ Uploading {file_name} → folder {issue_key}")
 
         if response.status_code == 200:
             url = response.json().get("secure_url")
             print("✅ Uploaded:", url)
             return url
+
+        elif response.status_code == 409:
+            print("⚠️ Duplicate detected, skipping:", file_name)
+            return f"{issue_key}/{file_name}"
+
         else:
             print("❌ Upload failed:", response.text)
             return None
@@ -107,37 +107,97 @@ def upload_to_cloudinary(file_bytes, file_name):
 
 
 # ----------------------------
-# PROCESS ALL ATTACHMENTS
+# GET FOLDER URL
+# ----------------------------
+def get_folder_url(issue_key):
+    return f"https://res.cloudinary.com/{CLOUD_NAME}/image/list/{issue_key}.json"
+
+
+# ----------------------------
+# UPDATE JIRA CUSTOM FIELD
+# ----------------------------
+def update_jira_field(issue_key, folder_url):
+    try:
+        url = f"{JIRA_URL}/rest/api/3/issue/{issue_key}"
+
+        payload = {
+            "fields": {
+                "customfield_10107": folder_url
+            }
+        }
+
+        response = requests.put(
+            url,
+            json=payload,
+            auth=HTTPBasicAuth(EMAIL, API_TOKEN),
+            headers={"Content-Type": "application/json"}
+        )
+
+        print("📝 Jira update:", response.status_code)
+
+    except Exception as e:
+        print("❌ Jira update error:", str(e))
+
+
+# ----------------------------
+# DELETE ATTACHMENT FROM JIRA
+# ----------------------------
+def delete_attachment(attachment_id):
+    try:
+        url = f"{JIRA_URL}/rest/api/3/attachment/{attachment_id}"
+
+        response = requests.delete(
+            url,
+            auth=HTTPBasicAuth(EMAIL, API_TOKEN)
+        )
+
+        print(f"🗑️ Deleted attachment {attachment_id} →", response.status_code)
+
+    except Exception as e:
+        print("❌ Delete error:", str(e))
+
+
+# ----------------------------
+# MAIN PROCESS
 # ----------------------------
 def process_request(data):
     try:
         print("🚀 Processing webhook...")
 
+        issue_key = data.get("issueKey")
         attachments = data.get("attachments", [])
 
         if not attachments:
             print("❌ No attachments received")
             return
 
-        uploaded_urls = []
+        uploaded_files = []
 
         for attachment in attachments:
+            attachment_id = attachment["id"]
+
             file_bytes, file_name = download_attachment(attachment)
 
             if not file_bytes:
                 continue
 
-            url = upload_to_cloudinary(file_bytes, file_name)
+            url = upload_to_cloudinary(file_bytes, file_name, issue_key)
 
             if url:
-                uploaded_urls.append({
-                    "file": file_name,
-                    "url": url
-                })
+                uploaded_files.append(url)
 
-        print("\n🎉 FINAL RESULT:")
-        for item in uploaded_urls:
-            print(f"{item['file']} → {item['url']}")
+                # Delete after successful upload
+                delete_attachment(attachment_id)
+
+        # Generate folder URL
+        folder_url = get_folder_url(issue_key)
+
+        print("📂 Folder URL:", folder_url)
+
+        # Update Jira custom field
+        update_jira_field(issue_key, folder_url)
+
+        print("\n🎉 PROCESS COMPLETED")
 
     except Exception as e:
         print("❌ Processing error:", str(e))
@@ -164,6 +224,14 @@ def webhook():
     except Exception as e:
         print("❌ Webhook error:", str(e))
         return jsonify({"error": str(e)}), 200
+
+
+# ----------------------------
+# HEALTH CHECK
+# ----------------------------
+@app.route('/test', methods=['GET'])
+def test():
+    return "DAM Integration Running ✅"
 
 
 # ----------------------------
